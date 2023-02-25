@@ -32,6 +32,9 @@ class Viewer:
             display_image = self.addToImage(display_image, paths_to_food, (0,255,0))
             display_image = self.addToImage(display_image, paths_to_home, (255,0,0))
             display_image = self.addToImage(display_image, ants, (0,0,0))
+            # pad = 1
+            # pad_width = ((pad, pad), (pad, pad), (0, 0))
+            # display_image = np.pad(display_image, pad_width=pad_width, mode='constant', constant_values=255)
             surf = pygame.surfarray.make_surface(display_image.astype('uint8'))
             self.display.blit(surf, (0, 0))
 
@@ -57,13 +60,13 @@ def updateParticles(to_food, to_home):
 
     ants_image = np.float32(np.zeros((size, size)))
 
-    to_food = np.where(to_food > 0, to_food-0.002, 0)
-    to_home = np.where(to_home > 0, to_home-0.002, 0)
+    to_food = np.where(to_food > 0, to_food-0.007, 0)
+    to_home = np.where(to_home > 0, to_home-0.007, 0)
     for ant in colony:
         pos = (int(ant.pos[0])%size, int(ant.pos[1])%size)
         cv2.circle(ants_image, pos, 5, 1, thickness=-1)
 
-        dist = 15
+        dist = 10
         width = 0.2*math.pi
         view_range = {0: [(ant.pos[0]+np.cos(ant.ang)*dist)%size, (ant.pos[1]+np.sin(ant.ang)*dist)%size]}
         for alpha in np.arange(-width,width,0.05):
@@ -76,6 +79,8 @@ def updateParticles(to_food, to_home):
             in_home = True
 
         if in_home:
+            # if ant.carries_food:
+            #     ant.ang = (ant.ang + math.pi) % (2*math.pi)
             ant.carries_food = False
             ant.previously_found = None
             ant.updatePos(view_range, to_home)
@@ -87,13 +92,14 @@ def updateParticles(to_food, to_home):
                     in_food = True
                     break
             if in_food:
+                # if not ant.carries_food:
+                # ant.ang = (ant.ang + math.pi) % (2*math.pi)
                 ant.carries_food = True
                 ant.previously_found = time.time()
                 ant.updatePos(view_range, to_food)
                 ant.cooldown = time.time()
             elif ant.carries_food:
                 ant.updatePos(view_range, to_home)
-                # ant.update_cooldown()
             else:
                 ant.updatePos(view_range, to_food)
         
@@ -113,12 +119,17 @@ class Ant:
         self.vel = 1
         self.ang = np.random.uniform(0, 2*math.pi)
         # self.ang = math.pi / 4
-        self.dt = 1.5
+        self.dt = 2
         self.carries_food = False
         self.cooldown = None
 
     def updatePos(self, points, path_image):
-        self.pos = (self.pos + np.array([self.vel*self.dt*np.cos(self.ang), self.vel*self.dt*np.sin(self.ang)]))%size
+        # self.pos = (self.pos + np.array([self.vel*self.dt*np.cos(self.ang), self.vel*self.dt*np.sin(self.ang)]))%size
+        self.pos += np.array([self.vel*self.dt*np.cos(self.ang), self.vel*self.dt*np.sin(self.ang)])
+        edge_offset = 10
+        if any([val < edge_offset or val >= size-edge_offset for val in self.pos]):
+            self.pos = np.clip(self.pos, edge_offset, size-edge_offset)
+            self.ang = (self.ang + math.pi) % 2 * math.pi
         
         all_angles = []
         for [angle, point] in points.items():
@@ -128,7 +139,7 @@ class Ant:
         if all_angles:
             self.ang += np.mean(all_angles)
 
-        a = 0.3
+        a = 0.1
         v = 0.1
         b = random.sample([-a,a], k=1)[0]
         c = random.gauss(b,v)
@@ -140,22 +151,23 @@ class FoodSource:
         self.radius = radius
 
 if __name__ == "__main__":
-    size = 400
-    COOLDOWN_TIME = 15
+    size = 300
+    COOLDOWN_TIME = 10
 
     home_pos = [size/2, size/2]
-    home_rad = 20
+    home_rad = 30
     
     colony = []
-    for _ in range(100):
+    for _ in range(250):
         colony.append(Ant(home_pos))
         # colony.append(Ant(np.random.uniform(0, size, 2)))
 
     food_sources = []
-    food_sources.append(FoodSource([100,100],home_rad//2))
-    # food_sources.append(FoodSource([size-50,size-50],home_rad//2))
-    # food_sources.append(FoodSource([size-50,50],home_rad//2))
-    # food_sources.append(FoodSource([50,size-50],home_rad//2))
+    offset = 130
+    food_sources.append(FoodSource([size/2-offset,size/2-offset],home_rad//2))
+    food_sources.append(FoodSource([size/2+offset,size/2-offset],home_rad//2))
+    food_sources.append(FoodSource([size/2-offset,size/2+offset],home_rad//2))
+    food_sources.append(FoodSource([size/2+offset,size/2+offset],home_rad//2))
 
-    viewer = Viewer(updateParticles, (size, size))
+    viewer = Viewer(updateParticles, (size+2, size+2))
     viewer.start()
